@@ -161,7 +161,7 @@ static void bar_poll_readable(struct bar *bar, const int fd) {
   struct block *block = bar->blocks;
 
   while (block) {
-    if (block->out[0] == fd) {
+    if (block->out.p.fd_read == fd) {
       block_debug(block, "readable");
       block_update(block);
       break;
@@ -284,7 +284,7 @@ static void bar_teardown(struct bar *bar) {
   /* Disable event I/O for blocks (persistent) */
   while (block) {
     if (block->interval == INTERVAL_PERSIST) {
-      err = sys_async(block->out[0], 0);
+      err = sys_async(block->out.p.fd_read, 0);
       if (err)
         block_error(block, "failed to disable event I/O");
     }
@@ -336,12 +336,10 @@ static int bar_poll(struct bar *bar) {
     }
 
     if (sig == SIGTERM || sig == SIGINT) {
-      printf("got SIGTERM or SIGINT: %d\n", sig);
       break;
     }
 
     if (sig == SIGALRM) {
-      printf("got SIGALRM\n");
       bar_poll_expired(bar);
       continue;
     }
@@ -358,7 +356,6 @@ static int bar_poll(struct bar *bar) {
     }
 
     if (sig == SIGRTMIN) {
-      printf("got SIGRTMIN");
       bar_poll_readable(bar, fd);
       bar_print(bar);
       continue;

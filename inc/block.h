@@ -37,6 +37,12 @@
 #define EXIT_ERR_INTERNAL	66
 
 struct bar;
+
+struct pipefd {
+  int fd_read;
+  int fd_write;
+};
+
 struct block {
 	const struct bar *bar;
 
@@ -56,8 +62,14 @@ struct block {
 
 	/* Runtime info */
 	unsigned long timestamp;
-	int in[2];
-	int out[2];
+  union {
+    int fds[2];
+    struct pipefd p;
+  } in;
+  union {
+    int fds[2];
+    struct pipefd p;
+  } out;
 	int code;
 	pid_t pid;
 
@@ -76,7 +88,7 @@ int block_for_each(const struct block *block,
 		   int (*func)(const char *key, const char *value, void *data),
 		   void *data);
 
-void block_printf(struct block *block, int lvl, const char *fmt, ...);
+void block_printf(struct block *block, log_level_t lvl, const char *fmt, ...);
 
 #define block_fatal(block, fmt, ...) \
 	do { \
