@@ -19,24 +19,24 @@
 #ifndef LOG_H
 #define LOG_H
 
-#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <string.h>
 
 #define SYSLOG_CRIT	"<2>"
 #define SYSLOG_ERR	"<3>"
 #define SYSLOG_NOTICE	"<5>"
 #define SYSLOG_DEBUG	"<7>"
 
-extern enum {
-	LOG_FATAL,
+typedef enum {
+	LOG_FATAL = 0,
 	LOG_ERROR,
 	LOG_TRACE,
 	LOG_DEBUG,
-} log_level;
+} log_level_t;
 
-static inline void log_printf(int lvl, const char *fmt, ...)
+extern log_level_t log_level;
+
+static inline void log_printf(log_level_t lvl, const char *fmt, ...)
 {
 	va_list ap;
 

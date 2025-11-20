@@ -20,6 +20,8 @@
 #include <limits.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <string.h>
 
 #include "config.h"
 #include "ini.h"

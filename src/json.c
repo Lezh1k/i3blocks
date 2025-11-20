@@ -19,14 +19,14 @@
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "json.h"
 #include "line.h"
-#include "log.h"
 #include "map.h"
-#include "sys.h"
 
 /* Return the number of UTF-8 bytes on success, 0 if it is invalid */
 static size_t json_parse_codepoint(const char *str, char *buf, size_t size)

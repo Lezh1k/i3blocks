@@ -20,10 +20,9 @@
 #define BAR_H
 
 #include <stdbool.h>
-
-#include "block.h"
 #include "sys.h"
 
+struct block;
 struct bar {
 	struct block *blocks;
 	sigset_t sigset;

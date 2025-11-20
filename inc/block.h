@@ -20,8 +20,8 @@
 #define BLOCK_H
 
 #include <sys/types.h>
+#include <stdbool.h>
 
-#include "bar.h"
 #include "log.h"
 #include "map.h"
 
@@ -36,6 +36,7 @@
 #define EXIT_URGENT	'!' /* 33 */
 #define EXIT_ERR_INTERNAL	66
 
+struct bar;
 struct block {
 	const struct bar *bar;
 

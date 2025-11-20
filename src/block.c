@@ -16,14 +16,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "bar.h"
 #include "block.h"
 #include "json.h"
-#include "line.h"
 #include "log.h"
 #include "sys.h"
 

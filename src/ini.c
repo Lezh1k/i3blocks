@@ -18,6 +18,7 @@
 
 #include <ctype.h>
 #include <string.h>
+#include "errno.h"
 
 #include "ini.h"
 #include "line.h"

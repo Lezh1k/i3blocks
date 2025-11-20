@@ -12,3 +12,5 @@ configure
 i3blocks-config.h*
 stamp-h1
 
+build/*
+.cache/*
