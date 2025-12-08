@@ -65,54 +65,46 @@ static void bar_stop(struct bar *bar) {
 }
 
 static void bar_poll_timed(struct bar *bar) {
-  struct block *block = bar->blocks;
-
-  while (block) {
+  for (struct block *b = bar->blocks; b; b = b->next) {
     /* spawn unless it is only meant for click or signal */
-    if (block->interval != 0) {
-      block_spawn(block);
-      block_touch(block);
+    if (b->interval != 0) {
+      block_spawn(b);
+      block_touch(b);
     }
-
-    block = block->next;
   }
 }
 
 static void bar_poll_expired(struct bar *bar) {
-  struct block *block = bar->blocks;
-
-  while (block) {
-    if (block->interval > 0) {
-      const unsigned long next_update = block->timestamp + block->interval;
-      unsigned long now;
-      int err;
-
-      err = sys_gettime(&now);
-      if (err)
-        return;
-
-      if (((long)(next_update - now)) <= 0) {
-        block_debug(block, "expired");
-        block_spawn(block);
-        block_touch(block);
-      }
+  for (struct block *b = bar->blocks; b; b = b->next) {
+    if (b->interval <= 0) {
+      continue;
     }
 
-    block = block->next;
-  }
+    const unsigned long next_update = b->timestamp + b->interval;
+    unsigned long now;
+    int err;
+
+    err = sys_gettime(&now);
+    if (err) {
+      continue;
+    }
+
+    if (((long)(next_update - now)) <= 0) {
+      block_debug(b, "expired");
+      block_spawn(b);
+      block_touch(b);
+    }
+  } // for b in bar->blocks
 }
 
 static void bar_poll_signaled(struct bar *bar, int sig) {
-  struct block *block = bar->blocks;
-
-  while (block) {
-    if (block->signal == sig) {
-      block_debug(block, "signaled");
-      block_spawn(block);
-      block_touch(block);
+  for (struct block *b = bar->blocks; b; b = b->next) {
+    if (b->signal != sig) {
+      continue;
     }
-
-    block = block->next;
+    block_debug(b, "signaled");
+    block_spawn(b);
+    block_touch(b);
   }
 }
 
@@ -158,16 +150,14 @@ static void bar_poll_exited(struct bar *bar) {
 }
 
 static void bar_poll_readable(struct bar *bar, const int fd) {
-  struct block *block = bar->blocks;
-
-  while (block) {
-    if (block->out.p.fd_read == fd) {
-      block_debug(block, "readable");
-      block_update(block);
-      break;
+  for (struct block *b = bar->blocks; b; b = b->next) {
+    if (b->out.p.fd_read != fd) {
+      continue;
     }
 
-    block = block->next;
+    block_debug(b, "readable");
+    block_update(b);
+    break;
   }
 }
 
@@ -179,28 +169,24 @@ static int gcd(int a, int b) {
 }
 
 static int bar_setup(struct bar *bar) {
-  struct block *block = bar->blocks;
   sigset_t *set = &bar->sigset;
   unsigned long sleeptime = 0;
   int sig;
   int err;
 
-  while (block) {
-    err = block_setup(block);
+  for (struct block *b = bar->blocks; b; b = b->next) {
+    err = block_setup(b);
     if (err)
       return err;
 
     /* The maximum sleep time is actually the GCD
      * between all positive block intervals.
      */
-    if (block->interval > 0) {
+    if (b->interval > 0) {
+      sleeptime = b->interval;
       if (sleeptime > 0)
-        sleeptime = gcd(sleeptime, block->interval);
-      else
-        sleeptime = block->interval;
+        sleeptime = gcd(sleeptime, b->interval);
     }
-
-    block = block->next;
   }
 
   err = sys_sigemptyset(set);
@@ -223,15 +209,6 @@ static int bar_setup(struct bar *bar) {
 
   /* Block updates (forks) */
   err = sys_sigaddset(set, SIGCHLD);
-  if (err)
-    return err;
-
-  /* Deprecated signals */
-  err = sys_sigaddset(set, SIGUSR1);
-  if (err)
-    return err;
-
-  err = sys_sigaddset(set, SIGUSR2);
   if (err)
     return err;
 
@@ -278,18 +255,15 @@ static int bar_setup(struct bar *bar) {
 }
 
 static void bar_teardown(struct bar *bar) {
-  struct block *block = bar->blocks;
   int err;
 
   /* Disable event I/O for blocks (persistent) */
-  while (block) {
-    if (block->interval == INTERVAL_PERSIST) {
-      err = sys_async(block->out.p.fd_read, 0);
+  for (struct block *b = bar->blocks; b; b = b->next) {
+    if (b->interval == INTERVAL_PERSIST) {
+      err = sys_async(b->out.p.fd_read, 0);
       if (err)
-        block_error(block, "failed to disable event I/O");
+        block_error(b, "failed to disable event I/O");
     }
-
-    block = block->next;
   }
 
   /* Disable event I/O for stdin (clicks) */
@@ -325,6 +299,10 @@ static int bar_poll(struct bar *bar) {
 
   /* First forks (for commands with an interval) */
   bar_poll_timed(bar);
+
+  for (struct block *b = bar->blocks; b; b = b->next) {
+    // todo register with epoll?
+  }
 
   while (1) {
     err = sys_sigwaitinfo(&bar->sigset, &sig, &fd);
@@ -363,11 +341,6 @@ static int bar_poll(struct bar *bar) {
 
     if (sig > SIGRTMIN && sig <= SIGRTMAX) {
       bar_poll_signaled(bar, sig - SIGRTMIN);
-      continue;
-    }
-
-    if (sig == SIGUSR1 || sig == SIGUSR2) {
-      error("SIGUSR{1,2} are deprecated, ignoring.");
       continue;
     }
 
@@ -416,20 +389,25 @@ static struct bar *bar_create(bool term) {
 static int bar_config_cb(const struct map *map, void *data) {
   struct bar *bar = data;
   struct block *block;
-  struct block *prev;
 
   block = block_create(bar, map);
   if (!block)
     return -ENOMEM;
 
-  if (bar->blocks) {
-    prev = bar->blocks;
-    while (prev->next)
-      prev = prev->next;
-    prev->next = block;
-  } else {
-    bar->blocks = block;
-  }
+  // push front (much faster)
+  block->next = bar->blocks;
+  bar->blocks = block;
+
+  // push back
+  // struct block *prev;
+  // if (bar->blocks) {
+  //   prev = bar->blocks;
+  //   while (prev->next)
+  //     prev = prev->next;
+  //   prev->next = block;
+  // } else {
+  //   bar->blocks = block;
+  // }
 
   return 0;
 }

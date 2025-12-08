@@ -24,7 +24,7 @@
 
 struct block;
 struct bar {
-	struct block *blocks;
+	struct block *blocks; // head
 	sigset_t sigset;
 	bool term;
 };

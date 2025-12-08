@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
       output = optarg;
       break;
     case 'v':
-      log_level++;
+      ++log_level;
       break;
     case 'h':
       printf("Usage: %s [-c <configfile>] [-o <output>] [-v] [-h] [-V]\n",
