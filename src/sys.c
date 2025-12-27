@@ -16,13 +16,15 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define _GNU_SOURCE /* for F_SETSIG */
+#define _GNU_SOURCE /* for signalfd */
 
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/epoll.h>
+#include <sys/signalfd.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -31,6 +33,7 @@
 #include <unistd.h>
 
 #include "log.h"
+#include "sys.h"
 
 #define sys_errno(msg, ...) trace(msg ": %s", ##__VA_ARGS__, strerror(errno))
 
@@ -211,23 +214,6 @@ int sys_sigsetmask(const sigset_t *set) {
   return sys_sigprocmask(set, SIG_SETMASK);
 }
 
-int sys_sigwaitinfo(sigset_t *set, int *sig, int *fd) {
-  siginfo_t siginfo;
-  int rc;
-
-  rc = sigwaitinfo(set, &siginfo);
-  if (rc == -1) {
-    sys_errno("sigwaitinfo()");
-    rc = -errno;
-    return rc;
-  }
-
-  *sig = rc;
-  *fd = siginfo.si_fd;
-
-  return 0;
-}
-
 int sys_open(const char *path, int *fd) {
   int rc;
 
@@ -297,32 +283,6 @@ int sys_dup(int fd1, int fd2) {
   return 0;
 }
 
-static int sys_setsig(int fd, int sig) {
-  int rc;
-
-  rc = fcntl(fd, F_SETSIG, sig);
-  if (rc == -1) {
-    sys_errno("fcntl(%d, F_SETSIG, %d (%s))", fd, sig, strsignal(sig));
-    rc = -errno;
-    return rc;
-  }
-
-  return 0;
-}
-
-static int sys_setown(int fd, pid_t pid) {
-  int rc;
-
-  rc = fcntl(fd, F_SETOWN, pid);
-  if (rc == -1) {
-    sys_errno("fcntl(%d, F_SETOWN, %d)", fd, pid);
-    rc = -errno;
-    return rc;
-  }
-
-  return 0;
-}
-
 static int sys_getfd(int fd, int *flags) {
   int rc;
 
@@ -351,34 +311,6 @@ static int sys_setfd(int fd, int flags) {
   return 0;
 }
 
-static int sys_getfl(int fd, int *flags) {
-  int rc;
-
-  rc = fcntl(fd, F_GETFL);
-  if (rc == -1) {
-    sys_errno("fcntl(%d, F_GETFL)", fd);
-    rc = -errno;
-    return rc;
-  }
-
-  *flags = rc;
-
-  return 0;
-}
-
-static int sys_setfl(int fd, int flags) {
-  int rc;
-
-  rc = fcntl(fd, F_SETFL, flags);
-  if (rc == -1) {
-    sys_errno("fcntl(%d, F_SETFL, %d)", fd, flags);
-    rc = -errno;
-    return rc;
-  }
-
-  return 0;
-}
-
 int sys_cloexec(int fd) {
   int flags;
   int err;
@@ -390,36 +322,119 @@ int sys_cloexec(int fd) {
   return sys_setfd(fd, flags | FD_CLOEXEC);
 }
 
-/* Enable signal-driven I/O, formerly known as asynchronous I/O */
-int sys_async(int fd, int sig) {
-  pid_t pid;
-  int flags;
-  int err;
+/* Portable polling API using epoll + signalfd on Linux */
+int sys_poll_create(int *poll_fd, int *signal_fd, const sigset_t *sigset) {
+  struct epoll_event ev;
+  int epoll_fd, sig_fd;
+  int rc;
 
-  err = sys_getfl(fd, &flags);
-  if (err)
-    return err;
-
-  if (sig) {
-    pid = getpid();
-    flags |= (O_ASYNC | O_NONBLOCK);
-  } else {
-    pid = 0;
-    flags &= ~(O_ASYNC | O_NONBLOCK);
+  /* Create epoll instance */
+  epoll_fd = epoll_create1(EPOLL_CLOEXEC);
+  if (epoll_fd == -1) {
+    sys_errno("epoll_create1(EPOLL_CLOEXEC)");
+    rc = -errno;
+    return rc;
   }
 
-  /* Establish a handler for the signal */
-  err = sys_setsig(fd, sig);
-  if (err)
-    return err;
+  /* Create signalfd from the signal mask */
+  sig_fd = signalfd(-1, sigset, SFD_NONBLOCK | SFD_CLOEXEC);
+  if (sig_fd == -1) {
+    sys_errno("signalfd()");
+    close(epoll_fd);
+    rc = -errno;
+    return rc;
+  }
 
-  /* Set calling process as owner, that is to receive the signal */
-  err = sys_setown(fd, pid);
-  if (err)
-    return err;
+  /* Add signalfd to epoll */
+  ev.events = EPOLLIN;
+  ev.data.fd = sig_fd;
+  rc = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sig_fd, &ev);
+  if (rc == -1) {
+    sys_errno("epoll_ctl(EPOLL_CTL_ADD, signalfd=%d)", sig_fd);
+    close(sig_fd);
+    close(epoll_fd);
+    rc = -errno;
+    return rc;
+  }
 
-  /* Enable/disable nonblocking I/O and signal-driven I/O */
-  return sys_setfl(fd, flags);
+  *poll_fd = epoll_fd;
+  *signal_fd = sig_fd;
+
+  return 0;
+}
+
+int sys_poll_add_fd(int poll_fd, int fd) {
+  struct epoll_event ev;
+  int rc;
+
+  ev.events = EPOLLIN;
+  ev.data.fd = fd;
+
+  rc = epoll_ctl(poll_fd, EPOLL_CTL_ADD, fd, &ev);
+  if (rc == -1) {
+    sys_errno("epoll_ctl(EPOLL_CTL_ADD, fd=%d)", fd);
+    rc = -errno;
+    return rc;
+  }
+
+  return 0;
+}
+
+int sys_poll_del_fd(int poll_fd, int fd) {
+  int rc;
+
+  rc = epoll_ctl(poll_fd, EPOLL_CTL_DEL, fd, NULL);
+  if (rc == -1) {
+    sys_errno("epoll_ctl(EPOLL_CTL_DEL, fd=%d)", fd);
+    rc = -errno;
+    return rc;
+  }
+
+  return 0;
+}
+
+int sys_poll_wait(int poll_fd, int signal_fd, struct sys_poll_event *event, int timeout_ms) {
+  struct epoll_event ev;
+  struct signalfd_siginfo si;
+  ssize_t n;
+  int rc;
+
+  rc = epoll_wait(poll_fd, &ev, 1, timeout_ms);
+  if (rc == -1) {
+    sys_errno("epoll_wait()");
+    rc = -errno;
+    return rc;
+  }
+
+  if (rc == 0) {
+    /* Timeout */
+    return -EAGAIN;
+  }
+
+  /* Check if this is a signal or a regular fd */
+  if (ev.data.fd == signal_fd) {
+    /* Read signal info from signalfd */
+    n = read(signal_fd, &si, sizeof(si));
+    if (n != sizeof(si)) {
+      sys_errno("read(signalfd)");
+      return -errno;
+    }
+
+    event->type = SYS_POLL_EVENT_SIGNAL;
+    event->sig = si.ssi_signo;
+    event->fd = si.ssi_fd; /* May be useful for some signals */
+  } else {
+    /* Regular fd is readable */
+    event->type = SYS_POLL_EVENT_FD;
+    event->fd = ev.data.fd;
+    event->sig = 0;
+  }
+
+  return 0;
+}
+
+int sys_poll_destroy(int poll_fd) {
+  return sys_close(poll_fd);
 }
 
 int sys_pipe(int *fds) {

@@ -109,7 +109,7 @@ static void bar_poll_signaled(struct bar *bar, int sig) {
 }
 
 static void bar_poll_exited(struct bar *bar) {
-  struct block *block;
+  struct block *b;
   pid_t pid;
   int err;
 
@@ -119,26 +119,23 @@ static void bar_poll_exited(struct bar *bar) {
       break;
 
     /* Find the dead process */
-    block = bar->blocks;
-    while (block) {
-      if (block->pid == pid)
-        break;
-
-      block = block->next;
+    b = bar->blocks;
+    for (; b && b->pid != pid; b = b->next) {
+      ; // do nothing
     }
 
-    if (block) {
-      block_debug(block, "exited");
-      block_reap(block);
-      if (block->interval == INTERVAL_PERSIST) {
-        block_debug(block, "unexpected exit?");
+    if (b) {
+      block_debug(b, "exited");
+      block_reap(b);
+      if (b->interval == INTERVAL_PERSIST) {
+        block_debug(b, "unexpected exit?");
       } else {
-        block_update(block);
+        block_update(b);
       }
-      block_close(block);
-      if (block->interval == INTERVAL_REPEAT) {
-        block_spawn(block);
-        block_touch(block);
+      block_close(b);
+      if (b->interval == INTERVAL_REPEAT) {
+        block_spawn(b);
+        block_touch(b);
       }
     } else {
       error("unknown child process %d", pid);
@@ -146,7 +143,7 @@ static void bar_poll_exited(struct bar *bar) {
       if (err)
         break;
     }
-  }
+  } // for (;;)
 }
 
 static void bar_poll_readable(struct bar *bar, const int fd) {
@@ -240,12 +237,17 @@ static int bar_setup(struct bar *bar) {
       return err;
   }
 
+  /* Create polling system (epoll + signalfd) */
+  err = sys_poll_create(&bar->poll_fd, &bar->signal_fd, set);
+  if (err)
+    return err;
+
   err = sys_cloexec(STDIN_FILENO);
   if (err)
     return err;
 
-  /* Setup event I/O for stdin (clicks) */
-  err = sys_async(STDIN_FILENO, SIGIO);
+  /* Register stdin for click events */
+  err = sys_poll_add_fd(bar->poll_fd, STDIN_FILENO);
   if (err)
     return err;
 
@@ -257,19 +259,14 @@ static int bar_setup(struct bar *bar) {
 static void bar_teardown(struct bar *bar) {
   int err;
 
-  /* Disable event I/O for blocks (persistent) */
-  for (struct block *b = bar->blocks; b; b = b->next) {
-    if (b->interval == INTERVAL_PERSIST) {
-      err = sys_async(b->out.p.fd_read, 0);
-      if (err)
-        block_error(b, "failed to disable event I/O");
-    }
-  }
-
-  /* Disable event I/O for stdin (clicks) */
-  err = sys_async(STDIN_FILENO, 0);
+  /* Cleanup polling system */
+  err = sys_close(bar->signal_fd);
   if (err)
-    error("failed to disable event I/O on stdin");
+    error("failed to close signalfd");
+
+  err = sys_poll_destroy(bar->poll_fd);
+  if (err)
+    error("failed to destroy poll fd");
 
   /*
    * Unblock signals (so subsequent syscall can be interrupted)
@@ -287,7 +284,7 @@ static void bar_teardown(struct bar *bar) {
 }
 
 static int bar_poll(struct bar *bar) {
-  int sig, fd;
+  struct sys_poll_event event;
   int err;
 
   err = bar_setup(bar);
@@ -300,51 +297,51 @@ static int bar_poll(struct bar *bar) {
   /* First forks (for commands with an interval) */
   bar_poll_timed(bar);
 
-  for (struct block *b = bar->blocks; b; b = b->next) {
-    // todo register with epoll?
-  }
-
   while (1) {
-    err = sys_sigwaitinfo(&bar->sigset, &sig, &fd);
+    err = sys_poll_wait(bar->poll_fd, bar->signal_fd, &event, -1);
     if (err) {
       /* Hiding the bar may interrupt this system call */
-      if (err == -EINTR)
+      if (err == -EINTR || err == -EAGAIN)
         continue;
       break;
     }
 
-    if (sig == SIGTERM || sig == SIGINT) {
-      break;
-    }
+    if (event.type == SYS_POLL_EVENT_SIGNAL) {
+      int sig = event.sig;
 
-    if (sig == SIGALRM) {
-      bar_poll_expired(bar);
-      continue;
-    }
+      if (sig == SIGTERM || sig == SIGINT) {
+        break;
+      }
 
-    if (sig == SIGCHLD) {
-      bar_poll_exited(bar);
-      bar_print(bar);
-      continue;
-    }
+      if (sig == SIGALRM) {
+        bar_poll_expired(bar);
+        continue;
+      }
 
-    if (sig == SIGIO) {
-      bar_read(bar);
-      continue;
-    }
+      if (sig == SIGCHLD) {
+        bar_poll_exited(bar);
+        bar_print(bar);
+        continue;
+      }
 
-    if (sig == SIGRTMIN) {
-      bar_poll_readable(bar, fd);
-      bar_print(bar);
-      continue;
-    }
+      if (sig > SIGRTMIN && sig <= SIGRTMAX) {
+        bar_poll_signaled(bar, sig - SIGRTMIN);
+        continue;
+      }
 
-    if (sig > SIGRTMIN && sig <= SIGRTMAX) {
-      bar_poll_signaled(bar, sig - SIGRTMIN);
-      continue;
-    }
+      debug("unhandled signal %d", sig);
+    } else if (event.type == SYS_POLL_EVENT_FD) {
+      int fd = event.fd;
 
-    debug("unhandled signal %d", sig);
+      if (fd == STDIN_FILENO) {
+        /* stdin readable - click event */
+        bar_read(bar);
+      } else {
+        /* persistent block output readable */
+        bar_poll_readable(bar, fd);
+        bar_print(bar);
+      }
+    }
   }
 
   bar_teardown(bar);
