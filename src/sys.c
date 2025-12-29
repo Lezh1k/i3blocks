@@ -330,6 +330,7 @@ int sys_cloexec(int fd) {
   return sys_setfd(fd, flags | FD_CLOEXEC);
 }
 
+#ifdef __FreeBSD__
 /* Portable polling API using epoll + signalfd on Linux */
 int sys_kqueue_create(int *kqueue_fd, int *signal_fd, const sigset_t *sigset) {
   (void)signal_fd; // we don't use it, added as arg for linux API compatibility
@@ -442,6 +443,7 @@ int sys_kqueue_wait(int kqueue_fd, int signal_fd, struct sys_event *event,
 }
 
 int sys_kqueue_destroy(int kqueue_fd) { return sys_close(kqueue_fd); }
+#endif
 
 #ifdef __linux__
 int sys_poll_create(int *poll_fd, int *signal_fd, const sigset_t *sigset) {
@@ -514,7 +516,7 @@ int sys_poll_del_fd(int poll_fd, int fd) {
   return 0;
 }
 
-int sys_poll_wait(int poll_fd, int signal_fd, struct sys_poll_event *event,
+int sys_poll_wait(int poll_fd, int signal_fd, struct sys_event *event,
                   int timeout_ms) {
   struct epoll_event ev;
   struct signalfd_siginfo si;

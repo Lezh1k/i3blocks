@@ -305,7 +305,7 @@ static int bar_poll(struct bar *bar) {
       break;
     }
 
-    if (event.type == SYS_POLL_EVENT_SIGNAL) {
+    if (event.type == SYS_EVENT_SIGNAL) {
       // if the event is some signal:
       int sig = event.sig;
 
@@ -330,7 +330,7 @@ static int bar_poll(struct bar *bar) {
       }
 
       debug("unhandled signal %d", sig);
-    } else if (event.type == SYS_POLL_EVENT_FD) { 
+    } else if (event.type == SYS_EVENT_FD) { 
       // if the event is some data from fd
       int fd = event.fd;
 
@@ -342,7 +342,7 @@ static int bar_poll(struct bar *bar) {
         bar_poll_readable(bar, fd);
         bar_print(bar);
       }
-    } // if (event.type == SYS_POLL_EVENT_FD)
+    } // if (event.type == SYS_EVENT_FD)
   } // while 1
 
   bar_teardown(bar);

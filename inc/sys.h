@@ -50,18 +50,17 @@ int sys_cloexec(int fd);
 #define SYS_EVENT_FD 1
 #define SYS_EVENT_SIGNAL 2
 
-// TODO RENAME IT!!!
 struct sys_event {
-  int type; /* SYS_POLL_EVENT_FD or SYS_POLL_EVENT_SIGNAL */
-  int fd;   /* valid when type == SYS_POLL_EVENT_FD */
-  int sig;  /* valid when type == SYS_POLL_EVENT_SIGNAL */
+  int type; /* SYS_EVENT_FD or SYS_EVENT_SIGNAL */
+  int fd;   /* valid when type == SYS_EVENT_FD */
+  int sig;  /* valid when type == SYS_EVENT_SIGNAL */
 };
 
 #ifdef __linux__
 int sys_poll_create(int *poll_fd, int *signal_fd, const sigset_t *sigset);
 int sys_poll_add_fd(int poll_fd, int fd);
 int sys_poll_del_fd(int poll_fd, int fd);
-int sys_poll_wait(int poll_fd, int signal_fd, struct sys_poll_event *event,
+int sys_poll_wait(int poll_fd, int signal_fd, struct sys_event *event,
                   int timeout_ms);
 int sys_poll_destroy(int poll_fd);
 #endif
