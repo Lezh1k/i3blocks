@@ -295,14 +295,18 @@ static int block_parent_stdin(struct block *block) {
 
 static int block_parent_stdout(struct block *block) {
   int err;
+  struct sys_event_queue_vptr eq_vptr = sys_event_queue_vptr();
 
   /* Close write end of stdout pipe */
   err = sys_close(block->out.p.fd_write);
   if (err)
     return err;
 
-  if (block->interval == INTERVAL_PERSIST)
-    return sys_async(block->out.p.fd_read, SIGRTMIN);
+  /* Register persistent block output fd for polling */
+  if (block->interval == INTERVAL_PERSIST) {
+    struct bar *bar = (struct bar *)block->bar;
+    return eq_vptr.add_fd(bar->poll_fd, block->out.p.fd_read);
+  }
 
   return 0;
 }
@@ -397,6 +401,8 @@ static int block_wait(struct block *block) {
 }
 
 void block_close(struct block *block) {
+  struct sys_event_queue_vptr eq_vptr = sys_event_queue_vptr();
+  struct bar *bar = (struct bar *)block->bar;
   int err;
 
   /* Invalidate descriptors to avoid misdetection after reassignment */
@@ -406,6 +412,11 @@ void block_close(struct block *block) {
       block_error(block, "failed to close stdin");
 
     block->in.p.fd_write = -1;
+
+    /* Unregister persistent block fd from polling system */
+    err = eq_vptr.del_fd(bar->poll_fd, block->out.p.fd_read);
+    if (err)
+      block_error(block, "failed to unregister fd from poll");
   }
 
   err = sys_close(block->out.p.fd_read);

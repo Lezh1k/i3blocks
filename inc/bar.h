@@ -26,6 +26,8 @@ struct block;
 struct bar {
 	struct block *blocks; // head
 	sigset_t sigset;
+	int poll_fd;    /* epoll/kqueue fd */
+	int signal_fd;  /* signalfd (Linux) or -1 (FreeBSD) */
 	bool term;
 };
 
