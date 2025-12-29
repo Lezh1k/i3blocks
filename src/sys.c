@@ -23,8 +23,16 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifdef __linux__
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
+#endif
+
+#ifdef __FreeBSD__
+#include <sys/event.h>
+#endif
+
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -323,6 +331,119 @@ int sys_cloexec(int fd) {
 }
 
 /* Portable polling API using epoll + signalfd on Linux */
+int sys_kqueue_create(int *kqueue_fd, int *signal_fd, const sigset_t *sigset) {
+  (void)signal_fd; // we don't use it, added as arg for linux API compatibility
+  struct kevent ev;
+  int kq;
+  int rc;
+
+  kq = kqueue1(O_CLOEXEC);
+  if (kq == -1) {
+    sys_errno("kq::create kqueue(O_CLOEXEC)");
+    rc = -errno;
+    return rc;
+  }
+
+  // block signals so they are only delivered via kqueue
+  sigset_t oldmask;
+  rc = sigprocmask(SIG_BLOCK, sigset, &oldmask);
+
+  if (rc == -1) {
+    sys_errno("kq::create sigprocmask failed");
+    rc = -errno;
+    return rc;
+  }
+
+  for (int signo = 1; signo < NSIG; ++signo) {
+    if (!sigismember(sigset, signo))
+      continue;
+
+    // EVFILT_SIGNAL (probably something else too)
+    EV_SET(&ev, signo, EVFILT_SIGNAL, EV_ADD | EV_ENABLE, 0, 0, NULL);
+    rc = kevent(kq, &ev, 1, NULL, 0, NULL);
+    if (rc == -1) {
+      sys_errno("kq::create kevent failed");
+      rc = -errno;
+      close(kq);
+      return rc;
+    }
+  }
+
+  *kqueue_fd = kq;
+  return 0;
+}
+
+int sys_kqueue_add_fd(int kqueue_fd, int fd) {
+  struct kevent ev;
+  EV_SET(&ev, fd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, NULL);
+  if (kevent(kqueue_fd, &ev, 1, NULL, 0, NULL) == -1) {
+    sys_errno("add_fd::kevent failed");
+    return -errno;
+  }
+  return 0;
+}
+
+int sys_kqueue_del_fd(int kqueue_fd, int fd) {
+  int rc;
+  struct kevent ev;
+  EV_SET(&ev, fd, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+  rc = kevent(kqueue_fd, &ev, 1, NULL, 0, NULL);
+  if (rc == -1) {
+    if (errno == ENOENT) {
+      return 0;
+    }
+    sys_errno("kqueue::del_fd failed for fd=%d\n", fd);
+    rc = -errno;
+    return rc;
+  }
+  return 0;
+}
+
+int sys_kqueue_wait(int kqueue_fd, int signal_fd, struct sys_event *event,
+                    int timeout_ms) {
+  (void)signal_fd; // don't have it in FreeBSD
+  struct kevent ev;
+  struct timespec ts;
+  struct timespec *pts = NULL;
+  int rc;
+
+  if (timeout_ms >= 0) {
+    ts.tv_sec = timeout_ms / 1000;
+    ts.tv_nsec = 0; // I don't care because
+    pts = &ts;
+  }
+
+  rc = kevent(kqueue_fd, NULL, 0, &ev, 1, pts);
+  if (rc == -1) {
+    sys_errno("kqueue_wait::kevent failed");
+    return -errno;
+  }
+
+  if (rc == 0) {
+    // timeout
+    return -EAGAIN;
+  }
+
+  if (ev.filter == EVFILT_SIGNAL) {
+    event->type = SYS_EVENT_SIGNAL;
+    event->sig = (int)ev.ident; // signal num
+    event->fd = -1;
+    return 0;
+  }
+
+  if (ev.filter == EVFILT_READ) {
+    event->type = SYS_EVENT_FD;
+    event->sig = 0;
+    event->fd = (int)ev.ident; // read fd
+    return 0;
+  }
+
+  return -EINVAL;
+}
+
+int sys_kqueue_destroy(int kqueue_fd) { return sys_close(kqueue_fd); }
+
+#ifdef __linux__
 int sys_poll_create(int *poll_fd, int *signal_fd, const sigset_t *sigset) {
   struct epoll_event ev;
   int epoll_fd, sig_fd;
@@ -393,7 +514,8 @@ int sys_poll_del_fd(int poll_fd, int fd) {
   return 0;
 }
 
-int sys_poll_wait(int poll_fd, int signal_fd, struct sys_poll_event *event, int timeout_ms) {
+int sys_poll_wait(int poll_fd, int signal_fd, struct sys_poll_event *event,
+                  int timeout_ms) {
   struct epoll_event ev;
   struct signalfd_siginfo si;
   ssize_t n;
@@ -420,12 +542,12 @@ int sys_poll_wait(int poll_fd, int signal_fd, struct sys_poll_event *event, int 
       return -errno;
     }
 
-    event->type = SYS_POLL_EVENT_SIGNAL;
+    event->type = SYS_EVENT_SIGNAL;
     event->sig = si.ssi_signo;
     event->fd = si.ssi_fd; /* May be useful for some signals */
   } else {
     /* Regular fd is readable */
-    event->type = SYS_POLL_EVENT_FD;
+    event->type = SYS_EVENT_FD;
     event->fd = ev.data.fd;
     event->sig = 0;
   }
@@ -433,9 +555,8 @@ int sys_poll_wait(int poll_fd, int signal_fd, struct sys_poll_event *event, int 
   return 0;
 }
 
-int sys_poll_destroy(int poll_fd) {
-  return sys_close(poll_fd);
-}
+int sys_poll_destroy(int poll_fd) { return sys_close(poll_fd); }
+#endif
 
 int sys_pipe(int *fds) {
   int rc;

@@ -47,20 +47,33 @@ int sys_dup(int fd1, int fd2);
 int sys_cloexec(int fd);
 
 /* Portable polling API (epoll/kqueue) */
-#define SYS_POLL_EVENT_FD 1
-#define SYS_POLL_EVENT_SIGNAL 2
+#define SYS_EVENT_FD 1
+#define SYS_EVENT_SIGNAL 2
 
-struct sys_poll_event {
-  int type;  /* SYS_POLL_EVENT_FD or SYS_POLL_EVENT_SIGNAL */
-  int fd;    /* valid when type == SYS_POLL_EVENT_FD */
-  int sig;   /* valid when type == SYS_POLL_EVENT_SIGNAL */
+// TODO RENAME IT!!!
+struct sys_event {
+  int type; /* SYS_POLL_EVENT_FD or SYS_POLL_EVENT_SIGNAL */
+  int fd;   /* valid when type == SYS_POLL_EVENT_FD */
+  int sig;  /* valid when type == SYS_POLL_EVENT_SIGNAL */
 };
 
+#ifdef __linux__
 int sys_poll_create(int *poll_fd, int *signal_fd, const sigset_t *sigset);
 int sys_poll_add_fd(int poll_fd, int fd);
 int sys_poll_del_fd(int poll_fd, int fd);
-int sys_poll_wait(int poll_fd, int signal_fd, struct sys_poll_event *event, int timeout_ms);
+int sys_poll_wait(int poll_fd, int signal_fd, struct sys_poll_event *event,
+                  int timeout_ms);
 int sys_poll_destroy(int poll_fd);
+#endif
+
+#ifdef __FreeBSD__
+int sys_kqueue_create(int *kqueue_fd, int *signal_fd, const sigset_t *sigset);
+int sys_kqueue_add_fd(int kqueue_fd, int fd);
+int sys_kqueue_del_fd(int kqueue_fd, int fd);
+int sys_kqueue_wait(int kqueue_fd, int signal_fd, struct sys_event *event,
+                    int timeout_ms);
+int sys_kqueue_destroy(int kqueue_fd);
+#endif
 
 int sys_pipe(int *fds);
 int sys_fork(pid_t *pid);

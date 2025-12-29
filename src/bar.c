@@ -27,7 +27,6 @@
 #include "json.h"
 #include "log.h"
 #include "map.h"
-#include "sched.h"
 #include "sys.h"
 
 static void bar_read(struct bar *bar) {
@@ -284,7 +283,7 @@ static void bar_teardown(struct bar *bar) {
 }
 
 static int bar_poll(struct bar *bar) {
-  struct sys_poll_event event;
+  struct sys_event event;
   int err;
 
   err = bar_setup(bar);
