@@ -165,6 +165,7 @@ static int gcd(int a, int b) {
 }
 
 static int bar_setup(struct bar *bar) {
+  struct sys_event_queue_vptr eq_vptr = sys_event_queue_vptr();
   sigset_t *set = &bar->sigset;
   unsigned long sleeptime = 0;
   int sig;
@@ -237,7 +238,7 @@ static int bar_setup(struct bar *bar) {
   }
 
   /* Create polling system (epoll + signalfd) */
-  err = sys_poll_create(&bar->poll_fd, &bar->signal_fd, set);
+  err = eq_vptr.create(&bar->poll_fd, &bar->signal_fd, set);
   if (err)
     return err;
 
@@ -246,7 +247,7 @@ static int bar_setup(struct bar *bar) {
     return err;
 
   /* Register stdin for click events */
-  err = sys_poll_add_fd(bar->poll_fd, STDIN_FILENO);
+  err = eq_vptr.add_fd(bar->poll_fd, STDIN_FILENO);
   if (err)
     return err;
 
@@ -256,6 +257,7 @@ static int bar_setup(struct bar *bar) {
 }
 
 static void bar_teardown(struct bar *bar) {
+  struct sys_event_queue_vptr eq_vptr = sys_event_queue_vptr();
   int err;
 
   /* Cleanup polling system */
@@ -263,7 +265,7 @@ static void bar_teardown(struct bar *bar) {
   if (err)
     error("failed to close signalfd");
 
-  err = sys_poll_destroy(bar->poll_fd);
+  err = eq_vptr.destroy(bar->poll_fd);
   if (err)
     error("failed to destroy poll fd");
 
@@ -283,6 +285,7 @@ static void bar_teardown(struct bar *bar) {
 }
 
 static int bar_poll(struct bar *bar) {
+  struct sys_event_queue_vptr eq_vptr = sys_event_queue_vptr();
   struct sys_event event;
   int err;
 
@@ -297,7 +300,7 @@ static int bar_poll(struct bar *bar) {
   bar_poll_timed(bar);
 
   while (1) {
-    err = sys_poll_wait(bar->poll_fd, bar->signal_fd, &event, -1);
+    err = eq_vptr.wait(bar->poll_fd, bar->signal_fd, &event, -1);
     if (err) {
       /* Hiding the bar may interrupt this system call */
       if (err == -EINTR || err == -EAGAIN)
@@ -330,7 +333,7 @@ static int bar_poll(struct bar *bar) {
       }
 
       debug("unhandled signal %d", sig);
-    } else if (event.type == SYS_EVENT_FD) { 
+    } else if (event.type == SYS_EVENT_FD) {
       // if the event is some data from fd
       int fd = event.fd;
 

@@ -295,6 +295,7 @@ static int block_parent_stdin(struct block *block) {
 
 static int block_parent_stdout(struct block *block) {
   int err;
+  struct sys_event_queue_vptr eq_vptr = sys_event_queue_vptr();
 
   /* Close write end of stdout pipe */
   err = sys_close(block->out.p.fd_write);
@@ -304,7 +305,7 @@ static int block_parent_stdout(struct block *block) {
   /* Register persistent block output fd for polling */
   if (block->interval == INTERVAL_PERSIST) {
     struct bar *bar = (struct bar *)block->bar;
-    return sys_poll_add_fd(bar->poll_fd, block->out.p.fd_read);
+    return eq_vptr.add_fd(bar->poll_fd, block->out.p.fd_read);
   }
 
   return 0;
@@ -400,6 +401,7 @@ static int block_wait(struct block *block) {
 }
 
 void block_close(struct block *block) {
+  struct sys_event_queue_vptr eq_vptr = sys_event_queue_vptr();
   struct bar *bar = (struct bar *)block->bar;
   int err;
 
@@ -412,7 +414,7 @@ void block_close(struct block *block) {
     block->in.p.fd_write = -1;
 
     /* Unregister persistent block fd from polling system */
-    err = sys_poll_del_fd(bar->poll_fd, block->out.p.fd_read);
+    err = eq_vptr.del_fd(bar->poll_fd, block->out.p.fd_read);
     if (err)
       block_error(block, "failed to unregister fd from poll");
   }

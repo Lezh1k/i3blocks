@@ -46,6 +46,12 @@ int sys_read(int fd, void *buf, size_t size, size_t *count);
 int sys_dup(int fd1, int fd2);
 int sys_cloexec(int fd);
 
+int sys_pipe(int *fds);
+int sys_fork(pid_t *pid);
+void sys_exit(int status);
+int sys_execsh(const char *command);
+int sys_isatty(int fd);
+
 /* Portable polling API (epoll/kqueue) */
 #define SYS_EVENT_FD 1
 #define SYS_EVENT_SIGNAL 2
@@ -56,29 +62,15 @@ struct sys_event {
   int sig;  /* valid when type == SYS_EVENT_SIGNAL */
 };
 
-#ifdef __linux__
-int sys_poll_create(int *poll_fd, int *signal_fd, const sigset_t *sigset);
-int sys_poll_add_fd(int poll_fd, int fd);
-int sys_poll_del_fd(int poll_fd, int fd);
-int sys_poll_wait(int poll_fd, int signal_fd, struct sys_event *event,
-                  int timeout_ms);
-int sys_poll_destroy(int poll_fd);
-#endif
+struct sys_event_queue_vptr {
+  int (*create)(int *eq_fd, int *sig_fd, const sigset_t *sigset);
+  int (*add_fd)(int eq_fd, int fd);
+  int (*del_fd)(int eq_fd, int fd);
+  int (*wait)(int eq_fd, int sig_fd, struct sys_event *event, int timeout_ms);
+  int (*destroy)(int eq_fd);
+};
 
-#ifdef __FreeBSD__
-int sys_kqueue_create(int *kqueue_fd, int *signal_fd, const sigset_t *sigset);
-int sys_kqueue_add_fd(int kqueue_fd, int fd);
-int sys_kqueue_del_fd(int kqueue_fd, int fd);
-int sys_kqueue_wait(int kqueue_fd, int signal_fd, struct sys_event *event,
-                    int timeout_ms);
-int sys_kqueue_destroy(int kqueue_fd);
-#endif
+struct sys_event_queue_vptr sys_event_queue_vptr(void);
 
-int sys_pipe(int *fds);
-int sys_fork(pid_t *pid);
-void sys_exit(int status);
-int sys_execsh(const char *command);
-
-int sys_isatty(int fd);
 
 #endif /* SYS_H */

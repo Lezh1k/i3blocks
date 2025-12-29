@@ -45,6 +45,26 @@
 
 #define sys_errno(msg, ...) trace(msg ": %s", ##__VA_ARGS__, strerror(errno))
 
+#ifdef __linux__
+static int sys_poll_create(int *poll_fd, int *signal_fd,
+                           const sigset_t *sigset);
+static int sys_poll_add_fd(int poll_fd, int fd);
+static int sys_poll_del_fd(int poll_fd, int fd);
+static int sys_poll_wait(int poll_fd, int signal_fd, struct sys_event *event,
+                         int timeout_ms);
+static int sys_poll_destroy(int poll_fd);
+#endif
+
+#ifdef __FreeBSD__
+static int sys_kqueue_create(int *kqueue_fd, int *signal_fd,
+                             const sigset_t *sigset);
+static int sys_kqueue_add_fd(int kqueue_fd, int fd);
+static int sys_kqueue_del_fd(int kqueue_fd, int fd);
+static int sys_kqueue_wait(int kqueue_fd, int signal_fd,
+                           struct sys_event *event, int timeout_ms);
+static int sys_kqueue_destroy(int kqueue_fd);
+#endif
+
 int sys_chdir(const char *path) {
   int rc;
 
@@ -619,4 +639,24 @@ int sys_isatty(int fd) {
   }
 
   return 0;
+}
+
+struct sys_event_queue_vptr sys_event_queue_vptr(void) {
+  static struct sys_event_queue_vptr res;
+#ifdef __linux__
+  res.create = sys_poll_create;
+  res.add_fd = sys_poll_add_fd;
+  res.del_fd = sys_poll_del_fd;
+  res.wait = sys_poll_wait;
+  res.destroy = sys_poll_destroy;
+#endif
+
+#ifdef __FreeBSD__
+  res.create = sys_kqueue_create;
+  res.add_fd = sys_kqueue_add_fd;
+  res.del_fd = sys_kqueue_del_fd;
+  res.wait = sys_kqueue_wait;
+  res.destroy = sys_kqueue_destroy;
+#endif
+  return res;
 }
