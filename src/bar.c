@@ -396,19 +396,19 @@ static int bar_config_cb(const struct map *map, void *data) {
     return -ENOMEM;
 
   // push front (much faster)
-  block->next = bar->blocks;
-  bar->blocks = block;
+  // block->next = bar->blocks;
+  // bar->blocks = block;
 
   // push back
-  // struct block *prev;
-  // if (bar->blocks) {
-  //   prev = bar->blocks;
-  //   while (prev->next)
-  //     prev = prev->next;
-  //   prev->next = block;
-  // } else {
-  //   bar->blocks = block;
-  // }
+  struct block *prev;
+  if (bar->blocks) {
+    prev = bar->blocks;
+    while (prev->next)
+      prev = prev->next;
+    prev->next = block;
+  } else {
+    bar->blocks = block;
+  }
 
   return 0;
 }
