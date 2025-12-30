@@ -1,38 +1,40 @@
 DEFS += \
 	-DSYSCONFDIR=\"$(sysconfdir)\"
 
+AM_CPPFLAGS = $(I3BLOCKS_CPPFLAGS)
+
 bin_PROGRAMS = i3blocks
 i3blocks_SOURCES = \
-	bar.c \
-	bar.h \
-	block.c \
-	block.h \
-	config.c \
-	config.h \
-	i3bar.c \
-	ini.c \
-	ini.h \
-	json.c \
-	json.h \
-	line.c \
-	line.h \
-	log.h \
-	main.c \
-	map.c \
-	map.h \
-	sys.c \
-	sys.h \
-	term.h
+	src/bar.c \
+	src/block.c \
+	src/config.c \
+	src/i3bar.c \
+	src/ini.c \
+	src/json.c \
+	src/line.c \
+	src/main.c \
+	src/map.c \
+	src/sys.c \
+	inc/bar.h \
+	inc/block.h \
+	inc/config.h \
+	inc/ini.h \
+	inc/json.h \
+	inc/line.h \
+	inc/log.h \
+	inc/map.h \
+	inc/sys.h \
+	inc/term.h
 
 dist_man1_MANS = \
 	docs/i3blocks.1
 
 dist_sysconf_DATA = \
-	i3blocks.conf
+	data/i3blocks.conf
 
 if ENABLE_BASH_COMPLETION
 bashcompletiondir = $(BASH_COMPLETION_DIR)
-bashcompletion_DATA = bash-completion
+bashcompletion_DATA = data/bash-completion
 
 install-data-local: install-bashcompletionDATA
 	( cd '$(DESTDIR)$(BASH_COMPLETION_DIR)' && mv bash-completion i3blocks )
