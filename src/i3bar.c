@@ -269,45 +269,47 @@ int i3bar_click(struct bar *bar) {
   if (!click)
     return -ENOMEM;
 
-  for (;;) {
+  do {
     /* Each click is one JSON object per line */
     err = json_read(STDIN_FILENO, 1, click);
     if (err) {
       if (err == -EAGAIN)
         err = 0;
-
       break;
     }
 
     /* Look for the corresponding block */
     block = i3bar_find(bar, click);
-    if (block) {
-      if (block->tainted) {
-        err = block_reset(block);
-        if (err)
-          break;
+    if (!block) {
+      error("block not found\n");
+      break;
+    }
 
-        block->tainted = false;
+    if (block->tainted) {
+      err = block_reset(block);
+      if (err)
+        break;
 
-        err = i3bar_print(bar);
-        if (err)
-          break;
-      } else {
-        err = map_copy(block->env, click);
-        if (err)
-          break;
+      block->tainted = false;
 
-        err = block_click(block);
-        if (err)
-          break;
+      err = i3bar_print(bar);
+      if (err)
+        break;
+    } else {
+      err = map_copy(block->env, click);
+      if (err)
+        break;
+
+      err = block_click(block);
+      if (err) {
+        break;
       }
     }
 
     map_clear(click);
-  }
+  } while (0);
 
   map_destroy(click);
-
   return err;
 }
 

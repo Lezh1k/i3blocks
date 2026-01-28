@@ -24,7 +24,7 @@ elseif(CMAKE_BUILD_TYPE MATCHES Release)
   message("Release build.")
 else()
   message("Some other build type. Setting up default = Release")
-  set(CMAKE_BUILD_TYPE Debug)
+  set(CMAKE_BUILD_TYPE Release)
 endif()
 
 file(GLOB_RECURSE sources      src/*.c src/*.s inc/*.h)
