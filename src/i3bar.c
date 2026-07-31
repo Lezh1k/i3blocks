@@ -269,7 +269,8 @@ int i3bar_click(struct bar *bar) {
   if (!click)
     return -ENOMEM;
 
-  do {
+  // I just don't like infinite loops
+  for (size_t i = 0; i < 100; ++i) {
     /* Each click is one JSON object per line */
     err = json_read(STDIN_FILENO, 1, click);
     if (err) {
@@ -307,7 +308,7 @@ int i3bar_click(struct bar *bar) {
     }
 
     map_clear(click);
-  } while (0);
+  };
 
   map_destroy(click);
   return err;

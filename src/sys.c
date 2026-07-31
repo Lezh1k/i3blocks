@@ -311,6 +311,29 @@ int sys_dup(int fd1, int fd2) {
   return 0;
 }
 
+static int sys_getfl(int fd, int *flags) {
+  int rc = fcntl(fd, F_GETFL);
+  if (rc == -1) {
+    sys_errno("fcntl(%d, F_GETFL)", fd);
+    rc = -errno;
+    return rc;
+  }
+  *flags = rc;
+  return 0;
+}
+
+static int sys_setfl(int fd, int flags) {
+  int rc;
+  rc = fcntl(fd, F_SETFL, flags);
+  if (rc == -1) {
+    sys_errno("fcntl(%d, F_SETFL, %x)", fd, flags);
+    rc = -errno;
+    return rc;
+  }
+
+  return 0;
+}
+
 static int sys_getfd(int fd, int *flags) {
   int rc;
 
@@ -348,6 +371,17 @@ int sys_cloexec(int fd) {
     return err;
 
   return sys_setfd(fd, flags | FD_CLOEXEC);
+}
+
+int sys_setasync(int fd) {
+  int flags;
+  int err;
+
+  err = sys_getfl(fd, &flags);
+  if (err)
+    return err;
+
+  return sys_setfl(fd, flags | (O_ASYNC | O_NONBLOCK));
 }
 
 #ifdef __FreeBSD__

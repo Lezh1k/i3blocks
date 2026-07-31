@@ -1,35 +1,47 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(i3blocks)
-enable_language(C ASM)
+project(i3blocks VERSION 0.1 LANGUAGES C)
 include(GNUInstallDirs)
-###############################################################################
-## file globbing ##############################################################
-###############################################################################
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # set(CMAKE_C_COMPILER clang)
 
-set(CMAKE_C_STANDARD 99)
-set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_FLAGS_RELEASE "-O2")
-set(CMAKE_C_FLAGS_DEBUG "-O0 -g")
-
-set(CMAKE_ASM_COMPILER ${CMAKE_C_COMPILER})
-set(CMAKE_ASM_FLAGS "${CFLAGS} -x assembler-with-cpp")
-
-if(CMAKE_BUILD_TYPE MATCHES Debug)
-  message("Debug build.")
-elseif(CMAKE_BUILD_TYPE MATCHES Release)
-  message("Release build.")
-else()
-  message("Some other build type. Setting up default = Release")
-  set(CMAKE_BUILD_TYPE Release)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+  # set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
 endif()
 
-file(GLOB_RECURSE sources      src/*.c src/*.s inc/*.h)
-file(GLOB_RECURSE sources_test tests/*.c)
-file(GLOB_RECURSE data resources/*)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS ON)
+
+set(sources
+  # headers
+  inc/bar.h                            
+  inc/block.h                          
+  inc/config.h                         
+  inc/ini.h                            
+  inc/json.h                           
+  inc/line.h                           
+  inc/log.h                            
+  inc/map.h                            
+  inc/sys.h                            
+  inc/term.h                           
+
+  # sources
+  src/bar.c    
+  src/block.c  
+  src/config.c 
+  src/i3bar.c  
+  src/ini.c    
+  src/json.c   
+  src/line.c   
+  src/main.c   
+  src/map.c    
+  src/sys.c    
+
+  # other files (like ui forms)
+)
 
 option(ENABLE_BASH_COMPLETION "Install bash completion for i3blocks" ON)
 # Default path similar to many distros:
@@ -53,8 +65,13 @@ add_compile_definitions(
 add_executable(${PROJECT_NAME} ${sources} ${data})
 target_include_directories(${PROJECT_NAME} PRIVATE inc)
 
-set(warning_level -Wall -Wextra -pedantic)
-target_compile_options(${PROJECT_NAME} PUBLIC ${warning_level} ${sse_flags})
+target_compile_options(${PROJECT_NAME} PRIVATE
+  -Wall
+  -Wextra
+  -Wpedantic
+  $<$<CONFIG:Release>:-O2>
+  $<$<CONFIG:Debug>:-O0 -g>
+)
 
 # This copies all resource files in the build directory.
 # We need this, because we want to work with paths relative to the executable.

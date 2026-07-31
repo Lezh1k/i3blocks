@@ -34,7 +34,7 @@ static ssize_t line_gets(int fd, char *buf, size_t size)
 	int err;
 
 	for (;;) {
-		if (len == size)
+		if (len >= size)
 			return -ENOSPC;
 
 		err = line_getc(fd, buf + len);

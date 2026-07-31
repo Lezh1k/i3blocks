@@ -45,6 +45,7 @@ int sys_close(int fd);
 int sys_read(int fd, void *buf, size_t size, size_t *count);
 int sys_dup(int fd1, int fd2);
 int sys_cloexec(int fd);
+int sys_setasync(int fd);
 
 int sys_pipe(int *fds);
 int sys_fork(pid_t *pid);
