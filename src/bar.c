@@ -246,9 +246,9 @@ static int bar_setup(struct bar *bar) {
   if (err)
     return err;
 
-  err = sys_setasync(STDIN_FILENO);
-  if (err)
-    return err;
+  // err = sys_setasync(STDIN_FILENO);
+  // if (err)
+  //   return err;
 
   /* Register stdin for click events */
   err = eq_vptr.add_fd(bar->poll_fd, STDIN_FILENO);
