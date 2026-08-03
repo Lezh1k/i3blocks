@@ -190,34 +190,13 @@ static int bar_setup(struct bar *bar) {
   if (err)
     return err;
 
-  /* Control signals */
-  err = sys_sigaddset(set, SIGTERM);
-  if (err)
-    return err;
-
-  err = sys_sigaddset(set, SIGINT);
-  if (err)
-    return err;
-
-  /* Timer signal */
-  err = sys_sigaddset(set, SIGALRM);
-  if (err)
-    return err;
-
-  /* Block updates (forks) */
-  err = sys_sigaddset(set, SIGCHLD);
-  if (err)
-    return err;
-
-  /* Click signal */
-  err = sys_sigaddset(set, SIGIO);
-  if (err)
-    return err;
-
-  /* I/O Possible signal for persistent blocks */
-  err = sys_sigaddset(set, SIGRTMIN);
-  if (err)
-    return err;
+  /* Control/timer/fork etc. signals */
+  int signals[] = {SIGTERM, SIGINT, SIGALRM, SIGCHLD, SIGIO, 0};
+  for (int *ps = signals; *ps; ++ps) {
+    if ((err = sys_sigaddset(set, *ps))) {
+      return err;
+    }
+  }
 
   /* Real-time signals for blocks */
   for (sig = SIGRTMIN + 1; sig <= SIGRTMAX; sig++) {

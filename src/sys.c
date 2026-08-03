@@ -527,10 +527,10 @@ int sys_poll_create(int *poll_fd, int *signal_fd, const sigset_t *sigset) {
   ev.data.fd = sig_fd;
   rc = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sig_fd, &ev);
   if (rc == -1) {
-    sys_errno("epoll_ctl(EPOLL_CTL_ADD, signalfd=%d)", sig_fd);
+    rc = -errno;
+    sys_errno("epoll_ctl(EPOLL_CTL_ADD, signalfd=%d). rc = %d", sig_fd, rc);
     close(sig_fd);
     close(epoll_fd);
-    rc = -errno;
     return rc;
   }
 
@@ -595,7 +595,8 @@ int sys_poll_wait(int poll_fd, int signal_fd, struct sys_event *event,
     n = read(signal_fd, &si, sizeof(si));
     if (n != sizeof(si)) {
       sys_errno("read(signalfd)");
-      return -errno;
+      rc = -errno;
+      return rc;
     }
 
     event->type = SYS_EVENT_SIGNAL;
